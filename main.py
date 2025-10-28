@@ -53,30 +53,49 @@ All paths you provide should be relative to the working directory. You do not ne
     ]
     api_key = os.environ.get("GEMINI_API_KEY")
     client = genai.Client(api_key=api_key)
-    response = client.models.generate_content(
-        model="gemini-2.0-flash-001",
-        contents=messages,
-        config=types.GenerateContentConfig(
-            tools=[available_functions], system_instruction=system_prompt
-        ),
-    )
-    usage_metadata = response.usage_metadata
 
-    if verbose_mode:
-        print(f"User prompt: {user_promt}")
-        print(f"Prompt tokens: {usage_metadata.prompt_token_count}")
-        print(f"Response tokens: {usage_metadata.candidates_token_count}")
-
-    if response.function_calls is not None and len(response.function_calls) > 0:
-        for call in response.function_calls:
-            verbose = True
-            function_call_result = call_function(
-                {"name": call.name, "args": call.args}, verbose=verbose
+    MAX_ITERRATIONS = 20
+    counter = 1
+    while counter <= MAX_ITERRATIONS:
+        counter += 1
+        try:
+            response = client.models.generate_content(
+                model="gemini-2.0-flash-001",
+                contents=messages,
+                config=types.GenerateContentConfig(
+                    tools=[available_functions], system_instruction=system_prompt
+                ),
             )
-            if verbose:
-                print(f"-> {function_call_result.parts[0].function_response.response}")
-    else:
-        print(response.text)
+            usage_metadata = response.usage_metadata
+
+            if verbose_mode:
+                print(f"User prompt: {user_promt}")
+                print(f"Prompt tokens: {usage_metadata.prompt_token_count}")
+                print(f"Response tokens: {usage_metadata.candidates_token_count}")
+
+            if response.function_calls is not None and len(response.function_calls) > 0:
+                if response.candidates is not None and len(response.candidates) > 0:
+                    for candidate in response.candidates:
+                        if candidate.content is not None:
+                            messages.append(candidate.content)
+
+                for call in response.function_calls:
+                    verbose = False
+                    function_call_result = call_function(
+                        {"name": call.name, "args": call.args}, verbose=verbose
+                    )
+                    messages.append(
+                        types.Content(role="user", parts=function_call_result.parts)
+                    )
+                    if verbose:
+                        print(
+                            f"-> {function_call_result.parts[0].function_response.response}"
+                        )
+            elif response.text is not None:
+                print(response.text)
+                break
+        except Exception as e:
+            print(f"Error: {e}")
 
 
 if __name__ == "__main__":
